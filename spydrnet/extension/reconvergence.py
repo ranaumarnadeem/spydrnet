@@ -27,38 +27,38 @@ def dfs_traverse(graph, start_node, visited=None, depth=0):
 
 def load_dag_from_json(filepath):
     """
-    Load DAG from JSON file and return adjacency list.
+    Load DAG from JSON file and return adjacency list and node metadata.
     """
     try:
         with open(filepath, "r") as f:
             dag_data = json.load(f)
 
         graph = {}
-        all_nodes = []
+        node_dict = {}
         for node, neighbors in zip(dag_data["nodes"], dag_data["adjacency"]):
             node_id = node["id"]
-            all_nodes.append(node_id)
             graph[node_id] = [edge["id"] for edge in neighbors]
+            node_dict[node_id] = node
 
         print(f"[INFO] Loaded DAG with {len(graph)} nodes.")
-        return graph, all_nodes
+        return graph, list(node_dict.keys()), node_dict
 
     except FileNotFoundError:
         print(f"[ERROR] File '{filepath}' not found.")
-        return {}, []
+        return {}, [], {}
 
     except json.JSONDecodeError as e:
         print(f"[ERROR] JSON decode error: {str(e)}")
-        return {}, []
+        return {}, [], {}
 
     except Exception as e:
         print(f"[ERROR] Unexpected error: {str(e)}")
-        return {}, []
+        return {}, [], {}
 
 
 def save_list_to_file(node_list, filename, label):
     """
-    Write list of nodes to file.
+    Write list of node names to file.
     """
     try:
         with open(filename, "w") as f:
@@ -68,6 +68,20 @@ def save_list_to_file(node_list, filename, label):
 
     except Exception as e:
         print(f"[ERROR] Could not write {label} file: {str(e)}")
+
+
+def save_node_structures(node_list, node_dict, filename, label):
+    """
+    Write full structure of specified nodes to JSON.
+    """
+    try:
+        node_structs = [node_dict[node] for node in node_list if node in node_dict]
+        with open(filename, "w") as f:
+            json.dump(node_structs, f, indent=2)
+        print(f"[INFO] {label} structure written to '{filename}'.")
+
+    except Exception as e:
+        print(f"[ERROR] Failed to write {label} structure: {str(e)}")
 
 
 def find_reconvergent_nodes(graph):
@@ -94,24 +108,32 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="DFS and reconvergence analysis of a DAG")
     parser.add_argument("-i", "--input", required=True, help="Path to DAG JSON file")
     parser.add_argument("-s", "--start", required=True, help="Start node for DFS")
-    parser.add_argument("--dfs_out", default="dfs_output.txt", help="Visited nodes file")
-    parser.add_argument("--unvisited_out", default="unvisited_nodes.txt", help="Unvisited nodes file")
-    parser.add_argument("--reconverge_out", default="reconvergent_nodes.txt", help="Reconvergent nodes file")
+    parser.add_argument("--dfs_out", default="dfs_output.txt", help="Visited node names")
+    parser.add_argument("--unvisited_out", default="unvisited_nodes.txt", help="Unvisited node names")
+    parser.add_argument("--reconverge_out", default="reconvergent_nodes.txt", help="Reconvergent node names")
+
+    parser.add_argument("--dfs_detail", default="visited_nodes_detail.json", help="Visited node structure")
+    parser.add_argument("--unvisited_detail", default="unvisited_nodes_detail.json", help="Unvisited node structure")
+    parser.add_argument("--reconverge_detail", default="reconvergent_nodes_detail.json", help="Reconvergent node structure")
+
     args = parser.parse_args()
 
-    graph, all_nodes = load_dag_from_json(args.input)
+    graph, all_nodes, node_dict = load_dag_from_json(args.input)
     if not graph or args.start not in graph:
         print(f"[ERROR] Invalid input or start node '{args.start}' not found.")
         exit(1)
 
-    # DFS Traversal
+    # === DFS Traversal ===
     visited_nodes = dfs_traverse(graph, args.start)
     unvisited_nodes = set(all_nodes) - visited_nodes
 
     save_list_to_file(visited_nodes, args.dfs_out, "DFS visited nodes")
     save_list_to_file(unvisited_nodes, args.unvisited_out, "Unvisited nodes")
+    save_node_structures(visited_nodes, node_dict, args.dfs_detail, "Visited nodes")
+    save_node_structures(unvisited_nodes, node_dict, args.unvisited_detail, "Unvisited nodes")
 
-    # Reconvergence Detection
+    # === Reconvergence Detection ===
     reconvergent_nodes = find_reconvergent_nodes(graph)
     print(f"[INFO] Found {len(reconvergent_nodes)} reconvergent node(s).")
     save_list_to_file(reconvergent_nodes, args.reconverge_out, "Reconvergent nodes")
+    save_node_structures(reconvergent_nodes, node_dict, args.reconverge_detail, "Reconvergent nodes")
