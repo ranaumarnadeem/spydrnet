@@ -28,31 +28,34 @@ def dfs_traverse(graph, start_node, visited=None, depth=0):
 
 def load_dag_from_json(filepath):
     """
-    Load DAG from JSON and return an adjacency dictionary.
+    Load DAG from JSON and return an adjacency dictionary and all node IDs.
     """
     try:
         with open(filepath, "r") as f:
             dag_data = json.load(f)
 
         graph = {}
+        all_nodes = set()
+
         for node, neighbors in zip(dag_data["nodes"], dag_data["adjacency"]):
             node_id = node["id"]
+            all_nodes.add(node_id)
             graph[node_id] = [edge["id"] for edge in neighbors]
 
         print(f"[INFO] Loaded DAG with {len(graph)} nodes.")
-        return graph
+        return graph, all_nodes
 
     except FileNotFoundError:
         print(f"[ERROR] File '{filepath}' not found.")
-        return {}
+        return {}, set()
 
     except json.JSONDecodeError as e:
         print(f"[ERROR] JSON decode error: {str(e)}")
-        return {}
+        return {}, set()
 
     except Exception as e:
         print(f"[ERROR] Unexpected error: {str(e)}")
-        return {}
+        return {}, set()
 
 
 def save_output(visited_nodes, filename="dfs_output.txt"):
@@ -61,12 +64,27 @@ def save_output(visited_nodes, filename="dfs_output.txt"):
     """
     try:
         with open(filename, "w") as f:
-            for node in sorted(visited_nodes):  # Optional: sorted order
+            for node in sorted(visited_nodes):
                 f.write(node + "\n")
         print(f"[INFO] DFS result written to '{filename}'.")
 
     except Exception as e:
         print(f"[ERROR] Could not write output file: {str(e)}")
+
+
+def save_unvisited_nodes(all_nodes, visited_nodes, filename="unvisited_nodes.txt"):
+    """
+    Save the list of unvisited nodes to a file.
+    """
+    try:
+        unvisited = sorted(all_nodes - visited_nodes)
+        with open(filename, "w") as f:
+            for node in unvisited:
+                f.write(node + "\n")
+        print(f"[INFO] Unvisited nodes written to '{filename}'.")
+
+    except Exception as e:
+        print(f"[ERROR] Could not write unvisited nodes file: {str(e)}")
 
 
 if __name__ == "__main__":
@@ -75,10 +93,11 @@ if __name__ == "__main__":
     start_node = "zero_reg"      # Change to your desired root
 
     # === Run DFS ===
-    graph = load_dag_from_json(json_file)
+    graph, all_nodes = load_dag_from_json(json_file)
 
     if graph and start_node in graph:
         visited = dfs_traverse(graph, start_node)
         save_output(visited)
+        save_unvisited_nodes(all_nodes, visited)
     else:
         print(f"[ERROR] Start node '{start_node}' not found in the graph.")
