@@ -3,47 +3,82 @@ import networkx as nx
 import json
 import argparse
 
-def build_dag(netlist):
-    dag = nx.DiGraph()
-    instance_map = {}
-    top_def = netlist.top_instance.reference
+def dfs_traverse(graph, start_node, visited=None, depth=0):
+    """
+    Perform depth-first traversal on the graph starting from start_node.
+    """
+    if visited is None:
+        visited = set()
 
-    # Add all instances in top definition
-    for instance in top_def.children:
-        inst_name = instance.name or instance.reference.name
-        dag.add_node(inst_name)
-        instance_map[instance] = inst_name
+    try:
+        if start_node in visited:
+            return visited
 
-    # Create edges based on output to input wires
-    for src_inst, src_name in instance_map.items():
-        for pin in src_inst.pins:
-            if pin.inner_pin and pin.inner_pin.port.direction in (sdn.OUT, sdn.INOUT):
-                wire = pin.wire
-                if wire:
-                    for connected_pin in wire.pins:
-                        if isinstance(connected_pin, sdn.OuterPin):
-                            dst_inst = connected_pin.instance
-                            if dst_inst in instance_map and dst_inst != src_inst:
-                                dag.add_edge(src_name, instance_map[dst_inst])
+        print("  " * depth + f"Visiting: {start_node}")
+        visited.add(start_node)
 
-    return dag
+        for neighbor in graph.get(start_node, []):
+            dfs_traverse(graph, neighbor, visited, depth + 1)
 
-def main():
-    parser = argparse.ArgumentParser(description="Generate DAG from flattened netlist")
-    parser.add_argument("input", help="Input flattened Verilog netlist (.v)")
-    parser.add_argument("output", help="Output DAG in JSON format")
-    args = parser.parse_args()
+    except Exception as e:
+        print(f"[ERROR] DFS failed at node '{start_node}': {str(e)}")
 
-    netlist = sdn.parse(args.input)
-    dag = build_dag(netlist)
+    return visited
 
-    dag_json = nx.readwrite.json_graph.adjacency_data(dag)
 
-    with open(args.output, "w") as f:
-        json.dump(dag_json, f, indent=2)
+def load_dag_from_json(filepath):
+    """
+    Load DAG from JSON and return an adjacency dictionary.
+    """
+    try:
+        with open(filepath, "r") as f:
+            dag_data = json.load(f)
 
-    print(f"DAG written to {args.output}")
-    print(f"Nodes: {dag.number_of_nodes()}, Edges: {dag.number_of_edges()}")
+        graph = {}
+        for node, neighbors in zip(dag_data["nodes"], dag_data["adjacency"]):
+            node_id = node["id"]
+            graph[node_id] = [edge["id"] for edge in neighbors]
+
+        print(f"[INFO] Loaded DAG with {len(graph)} nodes.")
+        return graph
+
+    except FileNotFoundError:
+        print(f"[ERROR] File '{filepath}' not found.")
+        return {}
+
+    except json.JSONDecodeError as e:
+        print(f"[ERROR] JSON decode error: {str(e)}")
+        return {}
+
+    except Exception as e:
+        print(f"[ERROR] Unexpected error: {str(e)}")
+        return {}
+
+
+def save_output(visited_nodes, filename="dfs_output.txt"):
+    """
+    Save the list of visited nodes to a file.
+    """
+    try:
+        with open(filename, "w") as f:
+            for node in sorted(visited_nodes):  # Optional: sorted order
+                f.write(node + "\n")
+        print(f"[INFO] DFS result written to '{filename}'.")
+
+    except Exception as e:
+        print(f"[ERROR] Could not write output file: {str(e)}")
+
 
 if __name__ == "__main__":
-    main()
+    # === Configuration ===
+    json_file = "dag.json"       # Change to your DAG file
+    start_node = "zero_reg"      # Change to your desired root
+
+    # === Run DFS ===
+    graph = load_dag_from_json(json_file)
+
+    if graph and start_node in graph:
+        visited = dfs_traverse(graph, start_node)
+        save_output(visited)
+    else:
+        print(f"[ERROR] Start node '{start_node}' not found in the graph.")
